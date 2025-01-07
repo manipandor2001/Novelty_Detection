@@ -1,10 +1,11 @@
+#main
 import os
 import argparse
 import torch
 import torchvision
 import torchvision.transforms as tf
 from train import train_model
-from model import R_Net, D_Net, R_Loss, D_Loss, R_WLoss, D_WLoss, Dataset
+from model import R_Net, D_Net, R_Loss, D_Loss, R_WLoss, D_WLoss, Accuracy , Dataset
 
 
 def main(args):
@@ -60,7 +61,7 @@ def main(args):
 	optim_r_params = {'alpha' : 0.9, 'weight_decay' : 1e-9}
 	optim_d_params = {'alpha' : 0.9, 'weight_decay' : 1e-9}
 
-	model = train_model(r_net, d_net, train_dataset, valid_dataset, R_Loss, D_Loss, optimizer_class=torch.optim.RMSprop,
+	model = train_model(r_net, d_net, train_dataset, valid_dataset, R_Loss, D_Loss, Accuracy,  optimizer_class=torch.optim.RMSprop,
 					device=device, batch_size=args.batch_size, optim_r_params=optim_r_params, optim_d_params=optim_d_params,
 					learning_rate=args.lr, rec_loss_bound=args.rec_bound,
 					save_step=args.sstep, num_workers=args.nw, save_path=save_path, lambd=args.lambd)
