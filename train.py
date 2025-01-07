@@ -1,3 +1,4 @@
+#train
 import os
 import torch
 import matplotlib.pyplot as plt
@@ -10,11 +11,12 @@ def train_model(r_net: torch.nn.Module,
 				valid_dataset: torch.utils.data.Dataset,
 				r_loss,
 				d_loss,
+        accuracy, 
 				lr_scheduler = None,
-				optimizer_class = torch.optim.Adam,
+				optimizer_class = torch.optim.RMSprop,
 				optim_r_params: dict = {},
 				optim_d_params: dict = {},
-				learning_rate: float = 0.001,
+				learning_rate: float = 0.0001,
 				scheduler_r_params: dict = {},
 				scheduler_d_params: dict = {},
 				batch_size: int = 512,
@@ -57,8 +59,8 @@ def train_model(r_net: torch.nn.Module,
 	for epoch in range(max_epochs):
 
 		start = timer()
-		train_metrics = train_single_epoch(r_net, d_net, optim_r, optim_d, r_loss, d_loss, train_loader, lambd, device)
-		valid_metrics = validate_single_epoch(r_net, d_net, r_loss, d_loss, valid_loader, device)
+		train_metrics = train_single_epoch(r_net, d_net, optim_r, optim_d, r_loss, d_loss, accuracy, train_loader, lambd, device)
+		valid_metrics = validate_single_epoch(r_net, d_net, r_loss, d_loss, accuracy, valid_loader, device)
 		time = timer() - start
 
 		metrics['train']['rec_loss'].append(train_metrics['rec_loss'])
@@ -96,12 +98,12 @@ def train_model(r_net: torch.nn.Module,
 
 	return (r_net, d_net)
 
-def train_single_epoch(r_net, d_net, optim_r, optim_d, r_loss, d_loss, train_loader, lambd, device) -> dict:
+def train_single_epoch(r_net, d_net, optim_r, optim_d, r_loss, d_loss, accuracy, train_loader, lambd, device) -> dict:
 
 	r_net.train()
 	d_net.train()
 
-	train_metrics = {'rec_loss' : 0, 'gen_loss' : 0, 'dis_loss' : 0}
+	train_metrics = {'rec_loss' : 0, 'gen_loss' : 0, 'dis_loss' : 0, 'accuracy' : 0}
 
 	for data in train_loader:
 
@@ -111,7 +113,7 @@ def train_single_epoch(r_net, d_net, optim_r, optim_d, r_loss, d_loss, train_loa
 		d_net.zero_grad()
 
 		dis_loss = d_loss(d_net, x_real, x_fake)
-
+		acc = accuracy(d_net, x_real, x_fake )
 		dis_loss.backward()
 		optim_d.step()
 
@@ -125,19 +127,20 @@ def train_single_epoch(r_net, d_net, optim_r, optim_d, r_loss, d_loss, train_loa
 		train_metrics['rec_loss'] += r_metrics['rec_loss']
 		train_metrics['gen_loss'] += r_metrics['gen_loss']
 		train_metrics['dis_loss'] += dis_loss
+		train_metrics['accuracy'] +=  acc
 
 	train_metrics['rec_loss'] = train_metrics['rec_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
 	train_metrics['gen_loss'] = train_metrics['gen_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
 	train_metrics['dis_loss'] = train_metrics['dis_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
-
+	train_metrics['accuracy'] =  train_metrics['accuracy']/(len(train_loader.dataset) / train_loader.batch_size)
 	return train_metrics
 
-def validate_single_epoch(r_net, d_net, r_loss, d_loss, valid_loader, device) -> dict:
+def validate_single_epoch(r_net, d_net, r_loss, d_loss, accuracy , valid_loader, device) -> dict:
 
 	r_net.eval()
 	d_net.eval()
 
-	valid_metrics = {'rec_loss' : 0, 'gen_loss' : 0, 'dis_loss' : 0}
+	valid_metrics = {'rec_loss' : 0, 'gen_loss' : 0, 'dis_loss' : 0, 'accuracy' : 0}
 
 	with torch.no_grad():
 		for data in valid_loader:
@@ -146,17 +149,19 @@ def validate_single_epoch(r_net, d_net, r_loss, d_loss, valid_loader, device) ->
 			x_fake = r_net(x_real)
 	
 			dis_loss = d_loss(d_net, x_real, x_fake)
-	
+			acc = accuracy(d_net, x_real, x_fake )
+
 			r_metrics = r_loss(d_net, x_real, x_fake, 0)
 				
 			valid_metrics['rec_loss'] += r_metrics['rec_loss']
 			valid_metrics['gen_loss'] += r_metrics['gen_loss']
 			valid_metrics['dis_loss'] += dis_loss
+			valid_metrics['accuracy'] += acc
 
 	valid_metrics['rec_loss'] = valid_metrics['rec_loss'].item() / (len(valid_loader.dataset) / valid_loader.batch_size)
 	valid_metrics['gen_loss'] = valid_metrics['gen_loss'].item() / (len(valid_loader.dataset) / valid_loader.batch_size)
 	valid_metrics['dis_loss'] = valid_metrics['dis_loss'].item() / (len(valid_loader.dataset) / valid_loader.batch_size)
-
+	valid_metrics['accuracy'] =  valid_metrics['accuracy']/(len(valid_loader.dataset) / valid_loader.batch_size)
 	return valid_metrics
 
 def plot_learning_curves(metrics: dict, metric_path: str):
