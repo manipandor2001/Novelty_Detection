@@ -1,5 +1,9 @@
+#module
 import torch
 import torch.nn.functional as F
+import numpy as np 
+from sklearn.metrics import accuracy_score , roc_curve
+
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -42,7 +46,7 @@ class ModuleList(torch.nn.ModuleList):
 
 class R_Net(torch.nn.Module):
 
-	def __init__(self, activation = torch.nn.LeakyReLU, in_channels:int = 3, n_channels:int = 64,
+	def __init__(self, activation = torch.nn.LeakyReLU, in_channels:int = 1, n_channels:int = 64,
 					kernel_size:int = 5, std:float = 1.0, skip:bool = False, cat:bool = False):
 
 		super(R_Net, self).__init__()
@@ -113,7 +117,7 @@ class R_Net(torch.nn.Module):
 
 class D_Net(torch.nn.Module):
 
-	def __init__(self, in_resolution:tuple, activation = torch.nn.LeakyReLU, in_channels:int = 3, n_channels:int = 64, kernel_size:int = 5):
+	def __init__(self, in_resolution:tuple, activation = torch.nn.LeakyReLU, in_channels:int = 1, n_channels:int = 64, kernel_size:int = 3):
 
 		super(D_Net, self).__init__()
 
@@ -176,6 +180,47 @@ def R_Loss(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor, l
 
 	return {'rec_loss' : rec_loss, 'gen_loss' : gen_loss, 'L_r' : L_r}
 
+def Accuracy(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor) -> torch.Tensor:
+
+	pred_real = d_net(x_real)
+	pred_fake = d_net(x_fake.detach())
+	
+	y_real = torch.ones_like(pred_real)
+	y_fake = torch.zeros_like(pred_fake)
+
+
+
+	y = torch.cat((y_real,y_fake), dim=0)
+	pred = torch.cat((pred_real , pred_fake), dim=0)  
+	pred  = torch.sigmoid(pred)
+	y = y.cpu().detach().numpy() 
+
+
+
+	pred = pred.cpu().detach().numpy()
+	tpr, fpr, threshold = roc_curve(y, pred )
+	j_statistic = tpr - fpr
+
+# Find the index of the maximum J statistic
+	optimal_idx = np.argmax(j_statistic)
+	optimal_threshold = threshold[optimal_idx]
+
+	if np.isinf(optimal_threshold):
+		optimal_threshold =  1  
+
+	#print(optimal_threshold)
+	pred = (pred > optimal_threshold).astype(int)
+	#print(pred[:5])
+	#pred = np.argmax(pred, axis=1)
+
+#	print(pred[:5])
+#	print(pred.shape)
+
+	accuracy = accuracy_score(y, pred)
+
+
+	return accuracy
+
 def D_Loss(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor) -> torch.Tensor:
 
 	pred_real = d_net(x_real)
@@ -188,6 +233,7 @@ def D_Loss(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor) -
 	fake_loss = F.binary_cross_entropy_with_logits(pred_fake, y_fake)
 
 	return real_loss + fake_loss
+
 
 # Wasserstein GAN loss (https://arxiv.org/abs/1701.07875)
 
