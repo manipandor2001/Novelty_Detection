@@ -132,7 +132,7 @@ def train_single_epoch(r_net, d_net, optim_r, optim_d, r_loss, d_loss, accuracy,
 	train_metrics['rec_loss'] = train_metrics['rec_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
 	train_metrics['gen_loss'] = train_metrics['gen_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
 	train_metrics['dis_loss'] = train_metrics['dis_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
-	train_metrics['accuracy'] =  train_metrics['accuracy']/((len(train_loader.dataset) / train_loader.batch_size)+1)
+	train_metrics['accuracy'] =  train_metrics['accuracy']/((len(train_loader.dataset) // train_loader.batch_size)+1)
 	return train_metrics
 
 def validate_single_epoch(r_net, d_net, r_loss, d_loss, accuracy , valid_loader, device) -> dict:
