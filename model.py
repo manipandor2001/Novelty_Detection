@@ -1,8 +1,8 @@
-#module
+#module feature selection
 import torch
 import torch.nn.functional as F
 import numpy as np 
-from sklearn.metrics import accuracy_score , roc_curve
+from sklearn.metrics import accuracy_score , roc_curve, f1_score
 
 
 
@@ -80,7 +80,8 @@ class R_Net(torch.nn.Module):
 											self.activation()])
 
 		self.n_c = self.n_c * 2 if self.cat else self.n_c
-
+		
+		self.bfw = FeatureSelectionModule(73728 , torch.nn.Tanh())
 		self.Decoder = ModuleList([torch.nn.ConvTranspose2d(self.n_c*8, n_channels*4, self.k_size, bias = False),
 											torch.nn.BatchNorm2d(n_channels*4),
 											self.activation(),
@@ -98,7 +99,7 @@ class R_Net(torch.nn.Module):
 
 		x_hat = self.add_noise(x) if noise else x
 		z, res_connections = self.Encoder.forward(x_hat)
-
+		z_hat = self.bfw(z)
 		res_connections.reverse()
 
 		if self.skip or self.cat:
@@ -180,47 +181,38 @@ def R_Loss(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor, l
 
 	return {'rec_loss' : rec_loss, 'gen_loss' : gen_loss, 'L_r' : L_r}
 
-def Accuracy(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor) -> torch.Tensor:
+def Accuracy(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor) -> tuple:
+    # Predict for real and fake samples
+    pred_real = d_net(x_real)
+    pred_fake = d_net(x_fake.detach())
 
-	pred_real = d_net(x_real)
-	pred_fake = d_net(x_fake.detach())
-	
-	y_real = torch.ones_like(pred_real)
-	y_fake = torch.zeros_like(pred_fake)
+    # True labels for real and fake samples
+    y_real = torch.ones_like(pred_real)
+    y_fake = torch.zeros_like(pred_fake)
 
+    # Combine labels and predictions
+    y = torch.cat((y_real, y_fake), dim=0).cpu().detach().numpy()
+    pred = torch.cat((pred_real, pred_fake), dim=0)
+    pred = torch.sigmoid(pred).cpu().detach().numpy()  # Apply sigmoid activation
 
+    # Explore thresholds from 0 to 1
+    thresholds = np.linspace(0, 1, 100)
+    best_accuracy = 0
+    best_threshold = 0
+    best_f1 = 0
 
-	y = torch.cat((y_real,y_fake), dim=0)
-	pred = torch.cat((pred_real , pred_fake), dim=0)  
-	pred  = torch.sigmoid(pred)
-	y = y.cpu().detach().numpy() 
+    for threshold in thresholds:
+        pred_binary = (pred > threshold).astype(int)  # Apply threshold to predictions
+        acc = accuracy_score(y, pred_binary, normalize = True)
+        f1 = f1_score(y, pred_binary)
 
+        if acc > best_accuracy:
+            best_accuracy = acc
+            best_threshold = threshold
+            best_f1 = f1
 
-
-	pred = pred.cpu().detach().numpy()
-	tpr, fpr, threshold = roc_curve(y, pred )
-	j_statistic = tpr - fpr
-
-# Find the index of the maximum J statistic
-	optimal_idx = np.argmax(j_statistic)
-	optimal_threshold = threshold[optimal_idx]
-
-	if np.isinf(optimal_threshold):
-		optimal_threshold =  1  
-
-	#print(optimal_threshold)
-	pred = (pred > optimal_threshold).astype(int)
-	#print(pred[:5])
-	#pred = np.argmax(pred, axis=1)
-
-#	print(pred[:5])
-#	print(pred.shape)
-
-	accuracy = accuracy_score(y, pred)
-
-
-	return accuracy
-
+    # Return the threshold, accuracy, and F1 score at the optimal threshold
+    return best_accuracy
 def D_Loss(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor) -> torch.Tensor:
 
 	pred_real = d_net(x_real)
@@ -256,3 +248,44 @@ def D_WLoss(d_net: torch.nn.Module, x_real: torch.Tensor, x_fake: torch.Tensor) 
 	dis_loss = -torch.mean(pred_real) + torch.mean(pred_fake) # Wasserstein D loss: -E[D(x_real)] + E[D(x_fake)]
 
 	return dis_loss
+
+class FeatureSelectionModule(torch.nn.Module):
+    def __init__(self, input_l,  activation):
+        """
+        Module for Batch-Wise Attenuation and Feature Mask Normalization.
+        """
+        super(FeatureSelectionModule, self).__init__()
+
+        self.input_l = input_l
+        self.hidden_layer = input_l // 2
+        self.activation =  activation
+
+
+
+        self.fc1 = torch.nn.Linear(input_l , self.hidden_layer)
+
+
+
+        self.fc2 = torch.nn.Linear(self.hidden_layer, input_l)
+    def forward(self, z):
+      z_flat_1 = z.view(z.size(0), -1)  # Shape: (B, D*H*W)
+
+      z_flat = F.relu(self.fc1(z_flat_1))
+      z_flat = self.fc2(z_flat)
+      z_flat = self.activation(z_flat)
+
+      z_avg = torch.mean(z_flat, dim=0)  # Shape: (D,)
+
+      m = F.softmax(z_avg, dim=0)  # Shape: (D,)
+
+      # Perform operations
+      m_expanded = m.unsqueeze(0).expand(z_flat.shape[0], -1)
+      z_hardman = z_flat_1 * m_expanded
+      z_reshape = z_hardman.view(z.shape)
+ 
+      # Explicitly detach temporary tensors after use
+     # del z_flat_1, z_flat, z_avg, m_expanded, z_hardman
+     # torch.cuda.empty_cache()  # Optional: Frees up GPU memory
+
+      return z_reshape
+          
