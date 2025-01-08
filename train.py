@@ -132,7 +132,7 @@ def train_single_epoch(r_net, d_net, optim_r, optim_d, r_loss, d_loss, accuracy,
 	train_metrics['rec_loss'] = train_metrics['rec_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
 	train_metrics['gen_loss'] = train_metrics['gen_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
 	train_metrics['dis_loss'] = train_metrics['dis_loss'].item() / (len(train_loader.dataset) / train_loader.batch_size)
-	train_metrics['accuracy'] =  train_metrics['accuracy']/(len(train_loader.dataset) / train_loader.batch_size)
+	train_metrics['accuracy'] =  train_metrics['accuracy']/((len(train_loader.dataset) / train_loader.batch_size)+1)
 	return train_metrics
 
 def validate_single_epoch(r_net, d_net, r_loss, d_loss, accuracy , valid_loader, device) -> dict:
@@ -161,7 +161,7 @@ def validate_single_epoch(r_net, d_net, r_loss, d_loss, accuracy , valid_loader,
 	valid_metrics['rec_loss'] = valid_metrics['rec_loss'].item() / (len(valid_loader.dataset) / valid_loader.batch_size)
 	valid_metrics['gen_loss'] = valid_metrics['gen_loss'].item() / (len(valid_loader.dataset) / valid_loader.batch_size)
 	valid_metrics['dis_loss'] = valid_metrics['dis_loss'].item() / (len(valid_loader.dataset) / valid_loader.batch_size)
-	valid_metrics['accuracy'] =  valid_metrics['accuracy']/(len(valid_loader.dataset) / valid_loader.batch_size)
+	valid_metrics['accuracy'] =  valid_metrics['accuracy']/((len(valid_loader.dataset) // valid_loader.batch_size)+1)
 	return valid_metrics
 
 def plot_learning_curves(metrics: dict, metric_path: str):
